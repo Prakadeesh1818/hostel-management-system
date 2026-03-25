@@ -57,31 +57,23 @@ const StudentDashboard = ({ user, onLogout }) => {
     }
   };
 
-  const handlePayment = async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const bookingId = formData.get('bookingId');
-    const paymentType = formData.get('paymentType');
-    const month = formData.get('month');
-    const year = formData.get('year');
-    const selectedBooking = bookings.find(b => b._id === bookingId);
-    const amount = selectedBooking?.monthlyRent;
+  const handlePayment = async (paymentId, paymentData) => {
     try {
-      const res = await axios.post('/api/student/payment', { bookingId, amount, paymentType, month, year });
-      const generatedBill = {
+      const res = await axios.post('/api/student/payment', { paymentId });
+      setBill({
         receiptNo: res.data._id.slice(-8).toUpperCase(),
         studentName: profile.name,
         studentId: profile.studentId || 'N/A',
-        roomNumber: selectedBooking?.room?.roomNumber,
-        roomType: selectedBooking?.room?.type,
-        amount,
-        paymentType,
-        month,
-        year,
+        roomNumber: paymentData.roomNumber,
+        roomType: paymentData.roomType,
+        amount: paymentData.amount,
+        paymentType: paymentData.paymentType,
+        month: paymentData.month,
+        year: paymentData.year,
         date: new Date().toLocaleDateString()
-      };
-      setBill(generatedBill);
+      });
       setModalType('bill');
+      setShowModal(true);
       fetchData();
     } catch (error) {
       toast.error('Error recording payment');
@@ -111,10 +103,6 @@ const StudentDashboard = ({ user, onLogout }) => {
     setBill(null);
     setShowModal(true);
   };
-
-  const stopPolling = () => {};
-
-  const handleQrPaymentDone = () => {};
 
   return (
     <div className="dashboard">
@@ -205,10 +193,7 @@ const StudentDashboard = ({ user, onLogout }) => {
 
       {activeTab === 'payments' && (
         <div className="section">
-          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
-            <h2>My Payments ({payments.length})</h2>
-            <button className="btn btn-primary" onClick={() => openModal('payment')}>Make Payment</button>
-          </div>
+          <h2>My Payments ({payments.length})</h2>
           <table className="table">
             <thead>
               <tr>
@@ -217,40 +202,58 @@ const StudentDashboard = ({ user, onLogout }) => {
                 <th>Month/Year</th>
                 <th>Status</th>
                 <th>Date</th>
-                <th>Bill</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {payments.map(payment => (
-                <tr key={payment._id}>
-                  <td>₹{payment.amount}</td>
-                  <td>{payment.paymentType}</td>
-                  <td>{payment.month} {payment.year}</td>
-                  <td>{payment.status}</td>
-                  <td>{new Date(payment.createdAt).toLocaleDateString()}</td>
-                  <td>
-                    {payment.status === 'completed' && (
-                      <button className="btn btn-secondary" style={{padding: '0.25rem 0.75rem', fontSize: '0.8rem'}} onClick={() => {
-                        const booking = bookings.find(b => b._id === (payment.booking?._id || payment.booking));
-                        setBill({
-                          receiptNo: payment._id.slice(-8).toUpperCase(),
-                          studentName: profile.name,
-                          studentId: profile.studentId || 'N/A',
+              {payments.map(payment => {
+                const booking = bookings.find(b => b._id === (payment.booking?._id || payment.booking));
+                return (
+                  <tr key={payment._id}>
+                    <td>₹{payment.amount}</td>
+                    <td>{payment.paymentType}</td>
+                    <td>{payment.month} {payment.year}</td>
+                    <td>
+                      <span style={{padding: '0.2rem 0.6rem', borderRadius: '12px', fontSize: '0.8rem', fontWeight: '600',
+                        background: payment.status === 'completed' ? '#d1fae5' : '#fef3c7',
+                        color: payment.status === 'completed' ? '#065f46' : '#92400e'}}>
+                        {payment.status}
+                      </span>
+                    </td>
+                    <td>{new Date(payment.createdAt).toLocaleDateString()}</td>
+                    <td>
+                      {payment.status === 'pending' && (
+                        <button className="btn btn-primary" style={{padding: '0.25rem 0.75rem', fontSize: '0.8rem'}} onClick={() => handlePayment(payment._id, {
                           roomNumber: booking?.room?.roomNumber || 'N/A',
                           roomType: booking?.room?.type || 'N/A',
                           amount: payment.amount,
                           paymentType: payment.paymentType,
                           month: payment.month,
-                          year: payment.year,
-                          date: new Date(payment.createdAt).toLocaleDateString()
-                        });
-                        setModalType('bill');
-                        setShowModal(true);
-                      }}>🧾 Bill</button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                          year: payment.year
+                        })}>Pay ₹{payment.amount}</button>
+                      )}
+                      {payment.status === 'completed' && (
+                        <button className="btn btn-secondary" style={{padding: '0.25rem 0.75rem', fontSize: '0.8rem'}} onClick={() => {
+                          setBill({
+                            receiptNo: payment._id.slice(-8).toUpperCase(),
+                            studentName: profile.name,
+                            studentId: profile.studentId || 'N/A',
+                            roomNumber: booking?.room?.roomNumber || 'N/A',
+                            roomType: booking?.room?.type || 'N/A',
+                            amount: payment.amount,
+                            paymentType: payment.paymentType,
+                            month: payment.month,
+                            year: payment.year,
+                            date: new Date(payment.createdAt).toLocaleDateString()
+                          });
+                          setModalType('bill');
+                          setShowModal(true);
+                        }}>🧾 Bill</button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -429,7 +432,6 @@ const StudentDashboard = ({ user, onLogout }) => {
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
               <h3>
                 {modalType === 'bookRoom' && 'Book Room'}
-                {modalType === 'payment' && 'Make Payment'}
                 {modalType === 'bill' && '🧾 Payment Receipt'}
                 {modalType === 'complaint' && 'Raise Complaint'}
               </h3>
@@ -444,44 +446,6 @@ const StudentDashboard = ({ user, onLogout }) => {
                 <p><strong>Total Amount:</strong> ₹{selectedRoom.monthlyRent * 3}</p>
                 <button className="btn btn-primary" onClick={handleBookRoom}>Confirm Booking</button>
               </div>
-            )}
-
-            {modalType === 'payment' && (
-              <form onSubmit={handlePayment}>
-                {bookings.filter(b => b.status === 'approved').length === 0 ? (
-                  <p style={{color: '#e74c3c', textAlign: 'center', padding: '1rem'}}>No approved bookings available. Please book a room first and wait for admin approval.</p>
-                ) : (
-                  <>
-                    <div className="form-group">
-                      <label>Booking</label>
-                      <select name="bookingId" required>
-                        <option value="">Select Booking</option>
-                        {bookings.filter(b => b.status === 'approved').map(booking => (
-                          <option key={booking._id} value={booking._id}>Room {booking.room?.roomNumber}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="form-group">
-                      <label>Payment Type</label>
-                      <select name="paymentType" required>
-                        <option value="rent">Rent</option>
-                        <option value="deposit">Deposit</option>
-                      </select>
-                    </div>
-                    <div className="form-group">
-                      <label>Month</label>
-                      <select name="month" required>
-                        {['January','February','March','April','May','June','July','August','September','October','November','December'].map(m => <option key={m}>{m}</option>)}
-                      </select>
-                    </div>
-                    <div className="form-group">
-                      <label>Year</label>
-                      <input type="number" name="year" defaultValue={new Date().getFullYear()} required />
-                    </div>
-                    <button type="submit" className="btn btn-primary">Submit Payment</button>
-                  </>
-                )}
-              </form>
             )}
 
             {modalType === 'bill' && bill && (

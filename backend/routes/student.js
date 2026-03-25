@@ -75,10 +75,14 @@ router.get('/bookings', auth, async (req, res) => {
 
 router.post('/payment', auth, async (req, res) => {
   try {
-    const { bookingId, amount, paymentType, month, year } = req.body;
-    const payment = new Payment({ student: req.user._id, booking: bookingId, amount, paymentType, month, year });
-    await payment.save();
-    res.status(201).json(payment);
+    const { paymentId } = req.body;
+    const payment = await Payment.findOneAndUpdate(
+      { _id: paymentId, student: req.user._id, status: 'pending' },
+      { status: 'completed' },
+      { new: true }
+    );
+    if (!payment) return res.status(404).json({ message: 'Payment not found' });
+    res.json(payment);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
