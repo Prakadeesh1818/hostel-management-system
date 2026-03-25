@@ -6,7 +6,6 @@ require('dotenv').config();
 const app = express();
 
 app.use(cors());
-app.use('/api/student/payment-webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
 app.use('/api/auth', require('./routes/auth'));

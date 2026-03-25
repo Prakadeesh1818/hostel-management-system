@@ -1,6 +1,5 @@
 const express = require('express');
-const crypto = require('crypto');
-const Razorpay = require('razorpay');
+const QRCode = require('qrcode');
 const Room = require('../models/Room');
 const Booking = require('../models/Booking');
 const Payment = require('../models/Payment');
@@ -8,11 +7,6 @@ const Complaint = require('../models/Complaint');
 const { auth } = require('../middleware/auth');
 
 const router = express.Router();
-
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET
-});
 
 router.get('/profile', auth, async (req, res) => {
   try {
@@ -77,17 +71,9 @@ router.post('/generate-qr/:paymentId', auth, async (req, res) => {
   try {
     const payment = await Payment.findOne({ _id: req.params.paymentId, student: req.user._id, status: 'pending' });
     if (!payment) return res.status(404).json({ message: 'Payment not found' });
-    const qr = await razorpay.qrCode.create({
-      type: 'upi_qr',
-      name: 'HostelHub',
-      usage: 'single_use',
-      fixed_amount: true,
-      payment_amount: payment.amount * 100,
-      description: `${payment.paymentType} - ${payment.month} ${payment.year}`,
-      close_by: Math.floor(Date.now() / 1000) + 600
-    });
-    await Payment.findByIdAndUpdate(payment._id, { razorpayQrId: qr.id });
-    res.json({ imageUrl: qr.image_url, amount: payment.amount });
+    const upiUrl = `upi://pay?pa=${process.env.UPI_ID}&pn=HostelHub&am=${payment.amount}&cu=INR&tn=${payment.paymentType}-${payment.month}-${payment.year}`;
+    const imageUrl = await QRCode.toDataURL(upiUrl, { width: 300, margin: 2 });
+    res.json({ imageUrl, amount: payment.amount });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -103,69 +89,6 @@ router.post('/payment', auth, async (req, res) => {
     );
     if (!payment) return res.status(404).json({ message: 'Payment not found' });
     res.json(payment);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-router.post('/create-qr', auth, async (req, res) => {
-  try {
-    const { bookingId, amount, paymentType, month, year } = req.body;
-    const qr = await razorpay.qrCode.create({
-      type: 'upi_qr',
-      name: 'HostelHub',
-      usage: 'single_use',
-      fixed_amount: true,
-      payment_amount: amount * 100,
-      description: `${paymentType} - ${month} ${year}`,
-      close_by: Math.floor(Date.now() / 1000) + 600
-    });
-    const payment = new Payment({
-      student: req.user._id,
-      booking: bookingId,
-      amount,
-      paymentType,
-      month,
-      year,
-      status: 'pending',
-      razorpayQrId: qr.id
-    });
-    await payment.save();
-    res.json({ qrId: qr.id, imageUrl: qr.image_url, paymentId: payment._id });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-router.get('/payment-status/:paymentId', auth, async (req, res) => {
-  try {
-    const payment = await Payment.findById(req.params.paymentId);
-    if (!payment) return res.status(404).json({ message: 'Payment not found' });
-    res.json({ status: payment.status, razorpayPaymentId: payment.razorpayPaymentId });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-router.post('/payment-webhook', async (req, res) => {
-  try {
-    const signature = req.headers['x-razorpay-signature'];
-    const body = req.body;
-    const expectedSignature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET)
-      .update(body)
-      .digest('hex');
-    if (signature !== expectedSignature) return res.status(400).json({ message: 'Invalid signature' });
-    const event = JSON.parse(body);
-    if (event.event === 'qr_code.credited') {
-      const qrId = event.payload.qr_code.entity.id;
-      const razorpayPaymentId = event.payload.payment.entity.id;
-      await Payment.findOneAndUpdate(
-        { razorpayQrId: qrId },
-        { status: 'completed', razorpayPaymentId }
-      );
-    }
-    res.json({ status: 'ok' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
