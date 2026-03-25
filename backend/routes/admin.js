@@ -85,11 +85,21 @@ router.patch('/bookings/:id', adminAuth, async (req, res) => {
   try {
     const { status } = req.body;
     const booking = await Booking.findByIdAndUpdate(req.params.id, { status }, { new: true });
-    
+
     if (status === 'approved') {
       await Room.findByIdAndUpdate(booking.room, { $inc: { currentOccupancy: 1 } });
+      const now = new Date();
+      await Payment.create({
+        student: booking.student,
+        booking: booking._id,
+        amount: booking.monthlyRent,
+        paymentType: 'rent',
+        status: 'pending',
+        month: now.toLocaleString('default', { month: 'long' }),
+        year: now.getFullYear()
+      });
     }
-    
+
     res.json(booking);
   } catch (error) {
     res.status(500).json({ message: error.message });

@@ -34,6 +34,15 @@ router.get('/rooms', auth, async (req, res) => {
 router.post('/book-room', auth, async (req, res) => {
   try {
     const { roomId, startDate, endDate } = req.body;
+
+    const existingBooking = await Booking.findOne({
+      student: req.user._id,
+      status: { $in: ['pending', 'approved'] }
+    });
+    if (existingBooking) {
+      return res.status(400).json({ message: 'You already have an active or pending booking' });
+    }
+
     const room = await Room.findById(roomId);
     if (!room || room.currentOccupancy >= room.capacity) {
       return res.status(400).json({ message: 'Room not available' });
