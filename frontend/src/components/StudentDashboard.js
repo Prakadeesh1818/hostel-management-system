@@ -13,8 +13,7 @@ const StudentDashboard = ({ user, onLogout }) => {
   const [modalType, setModalType] = useState('');
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [bill, setBill] = useState(null);
-  const [qrModal, setQrModal] = useState(null); // { imageUrl, amount, paymentId, paymentData }
-  const pollingRef = React.useRef(null);
+  const [qrModal, setQrModal] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -63,27 +62,27 @@ const StudentDashboard = ({ user, onLogout }) => {
     try {
       const res = await axios.post(`/api/student/generate-qr/${paymentId}`);
       setQrModal({ imageUrl: res.data.imageUrl, amount: res.data.amount, paymentId, paymentData });
-      pollingRef.current = setInterval(async () => {
-        try {
-          const statusRes = await axios.get(`/api/student/payment-status/${paymentId}`);
-          if (statusRes.data.status === 'completed') {
-            clearInterval(pollingRef.current);
-            setQrModal(null);
-            setBill({
-              receiptNo: paymentId.slice(-8).toUpperCase(),
-              studentName: profile.name,
-              studentId: profile.studentId || 'N/A',
-              ...paymentData,
-              date: new Date().toLocaleDateString()
-            });
-            setModalType('bill');
-            setShowModal(true);
-            fetchData();
-          }
-        } catch (_) {}
-      }, 4000);
     } catch (error) {
       toast.error('Error generating QR code');
+    }
+  };
+
+  const handleQrPaid = async () => {
+    try {
+      await axios.post('/api/student/payment', { paymentId: qrModal.paymentId });
+      setQrModal(null);
+      setBill({
+        receiptNo: qrModal.paymentId.slice(-8).toUpperCase(),
+        studentName: profile.name,
+        studentId: profile.studentId || 'N/A',
+        ...qrModal.paymentData,
+        date: new Date().toLocaleDateString()
+      });
+      setModalType('bill');
+      setShowModal(true);
+      fetchData();
+    } catch (error) {
+      toast.error('Error recording payment');
     }
   };
 
@@ -518,7 +517,8 @@ const StudentDashboard = ({ user, onLogout }) => {
               <p style={{margin: 0, fontSize: '1.25rem', fontWeight: '700', color: '#10b981'}}>₹{qrModal.amount}</p>
               <p style={{margin: '0.25rem 0 0', fontSize: '0.8rem', color: '#6b7280'}}>⏳ Waiting for payment... QR expires in 10 min</p>
             </div>
-            <button className="btn btn-secondary" style={{width: '100%'}} onClick={() => { clearInterval(pollingRef.current); setQrModal(null); }}>Cancel</button>
+            <button className="btn btn-primary" style={{width: '100%', marginBottom: '0.5rem'}} onClick={handleQrPaid}>✅ I've Paid – Generate Bill</button>
+            <button className="btn btn-secondary" style={{width: '100%'}} onClick={() => setQrModal(null)}>Cancel</button>
           </div>
         </div>
       )}
