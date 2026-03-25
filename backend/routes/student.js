@@ -73,6 +73,26 @@ router.get('/bookings', auth, async (req, res) => {
   }
 });
 
+router.post('/generate-qr/:paymentId', auth, async (req, res) => {
+  try {
+    const payment = await Payment.findOne({ _id: req.params.paymentId, student: req.user._id, status: 'pending' });
+    if (!payment) return res.status(404).json({ message: 'Payment not found' });
+    const qr = await razorpay.qrCode.create({
+      type: 'upi_qr',
+      name: 'HostelHub',
+      usage: 'single_use',
+      fixed_amount: true,
+      payment_amount: payment.amount * 100,
+      description: `${payment.paymentType} - ${payment.month} ${payment.year}`,
+      close_by: Math.floor(Date.now() / 1000) + 600
+    });
+    await Payment.findByIdAndUpdate(payment._id, { razorpayQrId: qr.id });
+    res.json({ imageUrl: qr.image_url, amount: payment.amount });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.post('/payment', auth, async (req, res) => {
   try {
     const { paymentId } = req.body;

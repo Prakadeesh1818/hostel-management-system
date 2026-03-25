@@ -13,6 +13,8 @@ const StudentDashboard = ({ user, onLogout }) => {
   const [modalType, setModalType] = useState('');
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [bill, setBill] = useState(null);
+  const [qrModal, setQrModal] = useState(null); // { imageUrl, amount, paymentId, paymentData }
+  const pollingRef = React.useRef(null);
 
   useEffect(() => {
     fetchData();
@@ -59,24 +61,29 @@ const StudentDashboard = ({ user, onLogout }) => {
 
   const handlePayment = async (paymentId, paymentData) => {
     try {
-      const res = await axios.post('/api/student/payment', { paymentId });
-      setBill({
-        receiptNo: res.data._id.slice(-8).toUpperCase(),
-        studentName: profile.name,
-        studentId: profile.studentId || 'N/A',
-        roomNumber: paymentData.roomNumber,
-        roomType: paymentData.roomType,
-        amount: paymentData.amount,
-        paymentType: paymentData.paymentType,
-        month: paymentData.month,
-        year: paymentData.year,
-        date: new Date().toLocaleDateString()
-      });
-      setModalType('bill');
-      setShowModal(true);
-      fetchData();
+      const res = await axios.post(`/api/student/generate-qr/${paymentId}`);
+      setQrModal({ imageUrl: res.data.imageUrl, amount: res.data.amount, paymentId, paymentData });
+      pollingRef.current = setInterval(async () => {
+        try {
+          const statusRes = await axios.get(`/api/student/payment-status/${paymentId}`);
+          if (statusRes.data.status === 'completed') {
+            clearInterval(pollingRef.current);
+            setQrModal(null);
+            setBill({
+              receiptNo: paymentId.slice(-8).toUpperCase(),
+              studentName: profile.name,
+              studentId: profile.studentId || 'N/A',
+              ...paymentData,
+              date: new Date().toLocaleDateString()
+            });
+            setModalType('bill');
+            setShowModal(true);
+            fetchData();
+          }
+        } catch (_) {}
+      }, 4000);
     } catch (error) {
-      toast.error('Error recording payment');
+      toast.error('Error generating QR code');
     }
   };
 
@@ -495,6 +502,31 @@ const StudentDashboard = ({ user, onLogout }) => {
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+      {qrModal && (
+        <div style={{position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000}}>
+          <div style={{backgroundColor: 'white', padding: '2rem', borderRadius: '12px', width: '340px', textAlign: 'center'}}>
+            <h3 style={{margin: '0 0 0.5rem 0', color: '#4f46e5'}}>Scan to Pay</h3>
+            <p style={{margin: '0 0 1rem 0', fontSize: '0.85rem', color: '#6b7280'}}>Use any UPI app to scan and pay. Bill generates automatically.</p>
+            <div style={{display: 'inline-block', padding: '1rem', background: 'white', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', marginBottom: '1rem'}}>
+              <img src={qrModal.imageUrl} alt="UPI QR" style={{width: '200px', height: '200px'}} />
+            </div>
+            <div style={{padding: '0.75rem', background: '#eff6ff', borderRadius: '8px', marginBottom: '1rem'}}>
+              <p style={{margin: 0, fontSize: '1.25rem', fontWeight: '700', color: '#10b981'}}>₹{qrModal.amount}</p>
+              <p style={{margin: '0.25rem 0 0', fontSize: '0.8rem', color: '#6b7280'}}>⏳ Waiting for payment... QR expires in 10 min</p>
+            </div>
+            <button className="btn btn-secondary" style={{width: '100%'}} onClick={() => { clearInterval(pollingRef.current); setQrModal(null); }}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default StudentDashboard;
     </div>
   );
 };
