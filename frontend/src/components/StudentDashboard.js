@@ -441,7 +441,7 @@ const StudentDashboard = ({ user, onLogout }) => {
                 {modalType === 'bill' && '🧾 Payment Receipt'}
                 {modalType === 'complaint' && 'Raise Complaint'}
               </h3>
-      <button onClick={() => { setShowModal(false); setSelectedRoom(null); setBill(null); }}>×</button>
+              <button onClick={() => { setShowModal(false); setSelectedRoom(null); setBill(null); }}>×</button>
             </div>
 
             {modalType === 'bookRoom' && selectedRoom && (
@@ -501,32 +501,23 @@ const StudentDashboard = ({ user, onLogout }) => {
           </div>
         </div>
       )}
-    </div>
-  );
-};
 
       {qrModal && (
         <div style={{position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000}}>
           <div style={{backgroundColor: 'white', padding: '2rem', borderRadius: '12px', width: '340px', textAlign: 'center'}}>
             <h3 style={{margin: '0 0 0.5rem 0', color: '#4f46e5'}}>Scan to Pay</h3>
-            <p style={{margin: '0 0 1rem 0', fontSize: '0.85rem', color: '#6b7280'}}>Use any UPI app to scan and pay. Bill generates automatically.</p>
+            <p style={{margin: '0 0 1rem 0', fontSize: '0.85rem', color: '#6b7280'}}>Use any UPI app to scan and pay.</p>
             <div style={{display: 'inline-block', padding: '1rem', background: 'white', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', marginBottom: '1rem'}}>
               <img src={qrModal.imageUrl} alt="UPI QR" style={{width: '200px', height: '200px'}} />
             </div>
             <div style={{padding: '0.75rem', background: '#eff6ff', borderRadius: '8px', marginBottom: '1rem'}}>
               <p style={{margin: 0, fontSize: '1.25rem', fontWeight: '700', color: '#10b981'}}>₹{qrModal.amount}</p>
-              <p style={{margin: '0.25rem 0 0', fontSize: '0.8rem', color: '#6b7280'}}>⏳ Waiting for payment... QR expires in 10 min</p>
             </div>
             <button className="btn btn-primary" style={{width: '100%', marginBottom: '0.5rem'}} onClick={handleQrPaid}>✅ I've Paid – Generate Bill</button>
             <button className="btn btn-secondary" style={{width: '100%'}} onClick={() => setQrModal(null)}>Cancel</button>
           </div>
         </div>
       )}
-    </div>
-  );
-};
-
-export default StudentDashboard;
     </div>
   );
 };
