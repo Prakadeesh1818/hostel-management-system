@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
-import { QRCodeSVG } from 'qrcode.react';
 
 const StudentDashboard = ({ user, onLogout }) => {
   const [rooms, setRooms] = useState([]);
@@ -14,7 +13,9 @@ const StudentDashboard = ({ user, onLogout }) => {
   const [modalType, setModalType] = useState('');
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [bill, setBill] = useState(null);
+  const [qrData, setQrData] = useState(null);
   const [qrPaymentData, setQrPaymentData] = useState({ month: new Date().toLocaleString('default', { month: 'long' }), year: new Date().getFullYear(), paymentType: 'rent' });
+  const pollingRef = React.useRef(null);
 
   useEffect(() => {
     fetchData();
@@ -149,7 +150,53 @@ const StudentDashboard = ({ user, onLogout }) => {
     setModalType(type);
     setSelectedRoom(room);
     setBill(null);
+    setQrData(null);
     setShowModal(true);
+  };
+
+  const stopPolling = () => {
+    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+  };
+
+  const generateRazorpayQR = async (booking) => {
+    setSelectedRoom(booking);
+    try {
+      const res = await axios.post('/api/student/create-qr', {
+        bookingId: booking._id,
+        amount: booking.monthlyRent,
+        paymentType: qrPaymentData.paymentType,
+        month: qrPaymentData.month,
+        year: qrPaymentData.year
+      });
+      setQrData(res.data);
+      // Start polling every 4 seconds
+      pollingRef.current = setInterval(async () => {
+        try {
+          const statusRes = await axios.get(`/api/student/payment-status/${res.data.paymentId}`);
+          if (statusRes.data.status === 'completed') {
+            stopPolling();
+            const generatedBill = {
+              receiptNo: res.data.paymentId.slice(-8).toUpperCase(),
+              studentName: profile.name,
+              studentId: profile.studentId || 'N/A',
+              roomNumber: booking.room?.roomNumber,
+              roomType: booking.room?.type,
+              amount: booking.monthlyRent,
+              paymentType: qrPaymentData.paymentType,
+              month: qrPaymentData.month,
+              year: qrPaymentData.year,
+              date: new Date().toLocaleDateString(),
+              razorpayPaymentId: statusRes.data.razorpayPaymentId
+            };
+            setBill(generatedBill);
+            setModalType('bill');
+            fetchData();
+          }
+        } catch (_) {}
+      }, 4000);
+    } catch (error) {
+      toast.error('Error generating QR code');
+    }
   };
 
   const handleQrPaymentDone = async () => {
@@ -474,7 +521,7 @@ const StudentDashboard = ({ user, onLogout }) => {
                 {modalType === 'bill' && '🧾 Payment Receipt'}
                 {modalType === 'complaint' && 'Raise Complaint'}
               </h3>
-              <button onClick={() => setShowModal(false)}>×</button>
+      <button onClick={() => { stopPolling(); setShowModal(false); setSelectedRoom(null); setQrData(null); setBill(null); }}>×</button>
             </div>
 
             {modalType === 'bookRoom' && selectedRoom && (
@@ -493,24 +540,7 @@ const StudentDashboard = ({ user, onLogout }) => {
                   <p style={{color: '#e74c3c', textAlign: 'center', padding: '1rem'}}>No approved bookings. Book a room first and wait for admin approval.</p>
                 ) : !selectedRoom ? (
                   <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
-                    <p style={{margin: 0, color: '#6b7280', fontSize: '0.9rem'}}>Select a booking to generate QR code:</p>
-                    {bookings.filter(b => b.status === 'approved').map(booking => (
-                      <div key={booking._id}
-                        onClick={() => setSelectedRoom(booking)}
-                        style={{padding: '1rem', border: '2px solid #e1e5e9', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.2s'}}
-                        onMouseEnter={e => e.currentTarget.style.borderColor = '#4f46e5'}
-                        onMouseLeave={e => e.currentTarget.style.borderColor = '#e1e5e9'}
-                      >
-                        <p style={{margin: '0 0 0.25rem 0', fontWeight: '600'}}>Room {booking.room?.roomNumber} ({booking.room?.type})</p>
-                        <p style={{margin: 0, color: '#4f46e5', fontWeight: '700', fontSize: '1.2rem'}}>₹{booking.monthlyRent}/month</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{textAlign: 'center'}}>
-                    <p style={{margin: '0 0 0.5rem 0', fontWeight: '600', fontSize: '1rem'}}>Room {selectedRoom.room?.roomNumber} - ₹{selectedRoom.monthlyRent}</p>
-                    <p style={{margin: '0 0 1rem 0', fontSize: '0.85rem', color: '#6b7280'}}>Scan QR to pay via any UPI app</p>
-                    <div style={{display: 'flex', gap: '1rem', marginBottom: '1rem'}}>
+                    <div style={{display: 'flex', gap: '1rem', marginBottom: '0.5rem'}}>
                       <div style={{flex: 1}}>
                         <label style={{fontSize: '0.8rem', color: '#6b7280'}}>Month</label>
                         <select style={{width: '100%', padding: '0.4rem', borderRadius: '6px', border: '1px solid #ddd'}} value={qrPaymentData.month} onChange={e => setQrPaymentData(p => ({...p, month: e.target.value}))}>
@@ -525,24 +555,37 @@ const StudentDashboard = ({ user, onLogout }) => {
                         </select>
                       </div>
                     </div>
+                    <p style={{margin: 0, color: '#6b7280', fontSize: '0.9rem'}}>Select booking to generate QR:</p>
+                    {bookings.filter(b => b.status === 'approved').map(booking => (
+                      <div key={booking._id}
+                        onClick={() => generateRazorpayQR(booking)}
+                        style={{padding: '1rem', border: '2px solid #e1e5e9', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.2s'}}
+                        onMouseEnter={e => e.currentTarget.style.borderColor = '#4f46e5'}
+                        onMouseLeave={e => e.currentTarget.style.borderColor = '#e1e5e9'}
+                      >
+                        <p style={{margin: '0 0 0.25rem 0', fontWeight: '600'}}>Room {booking.room?.roomNumber} ({booking.room?.type})</p>
+                        <p style={{margin: 0, color: '#4f46e5', fontWeight: '700', fontSize: '1.2rem'}}>₹{booking.monthlyRent}/month</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : !qrData ? (
+                  <div style={{textAlign: 'center', padding: '2rem'}}>
+                    <div style={{width: '40px', height: '40px', border: '4px solid #4f46e5', borderTop: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 1rem'}}></div>
+                    <p style={{color: '#6b7280'}}>Generating QR code...</p>
+                  </div>
+                ) : (
+                  <div style={{textAlign: 'center'}}>
+                    <p style={{margin: '0 0 0.25rem 0', fontWeight: '600'}}>Room {selectedRoom.room?.roomNumber} — ₹{selectedRoom.monthlyRent}</p>
+                    <p style={{margin: '0 0 1rem 0', fontSize: '0.85rem', color: '#6b7280'}}>Scan with any UPI app. Bill generates automatically after payment.</p>
                     <div style={{display: 'inline-block', padding: '1rem', background: 'white', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', marginBottom: '1rem'}}>
-                      <QRCodeSVG
-                        value={`upi://pay?pa=prakadeesh137-1@okaxis&pn=HostelHub&am=${selectedRoom.monthlyRent}&cu=INR&tn=Room${selectedRoom.room?.roomNumber}-${qrPaymentData.paymentType}`}
-                        size={200}
-                        bgColor='#ffffff'
-                        fgColor='#4f46e5'
-                        level='H'
-                        includeMargin={true}
-                      />
+                      <img src={qrData.imageUrl} alt="UPI QR" style={{width: '200px', height: '200px'}} />
                     </div>
-                    <div style={{padding: '0.75rem', background: '#eff6ff', borderRadius: '8px', marginBottom: '1rem'}}>
-                      <p style={{margin: '0 0 0.25rem 0', fontSize: '0.85rem', color: '#6b7280'}}>UPI ID</p>
-                      <p style={{margin: 0, fontWeight: '700', color: '#4f46e5', fontSize: '1rem'}}>prakadeesh137-1@okaxis</p>
-                      <p style={{margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#6b7280'}}>Amount</p>
-                      <p style={{margin: 0, fontWeight: '700', color: '#10b981', fontSize: '1.25rem'}}>₹{selectedRoom.monthlyRent}</p>
+                    <div style={{padding: '0.75rem', background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.85rem'}}>
+                      <p style={{margin: 0, color: '#92400e'}}>⏳ Waiting for payment... QR expires in 10 minutes.</p>
                     </div>
-                    <button className="btn btn-primary" style={{width: '100%', marginBottom: '0.5rem', background: '#10b981', border: 'none'}} onClick={handleQrPaymentDone}>🧾 Payment Done – Generate Bill</button>
-                    <button className="btn btn-secondary" style={{width: '100%'}} onClick={() => setSelectedRoom(null)}>← Back</button>
+                    <div style={{display: 'flex', gap: '0.5rem'}}>
+                      <button className="btn btn-secondary" style={{flex: 1}} onClick={() => { stopPolling(); setSelectedRoom(null); setQrData(null); }}>← Back</button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -555,7 +598,7 @@ const StudentDashboard = ({ user, onLogout }) => {
                   <p style={{margin: '0.25rem 0 0', fontSize: '0.85rem', color: '#6b7280'}}>Payment Receipt</p>
                 </div>
                 <div style={{display: 'grid', gap: '0.5rem', fontSize: '0.9rem', marginBottom: '1rem'}}>
-                  {[['Receipt No', `#${bill.receiptNo}`], ['Date', bill.date], ['Student', bill.studentName], ['Student ID', bill.studentId], ['Room', `${bill.roomNumber} (${bill.roomType})`], ['Payment For', `${bill.paymentType.toUpperCase()} - ${bill.month} ${bill.year}`], ['Amount Paid', `₹${bill.amount}`], ['Paid Via', `UPI (${bill.upiId})`], ['Status', '✅ PAID']].map(([label, value]) => (
+                  {[['Receipt No', `#${bill.receiptNo}`], ['Date', bill.date], ['Student', bill.studentName], ['Student ID', bill.studentId], ['Room', `${bill.roomNumber} (${bill.roomType})`], ['Payment For', `${bill.paymentType.toUpperCase()} - ${bill.month} ${bill.year}`], ['Amount Paid', `₹${bill.amount}`], ['Payment ID', bill.razorpayPaymentId || 'N/A'], ['Status', '✅ PAID']].map(([label, value]) => (
                     <div key={label} style={{display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px dotted #eee'}}>
                       <span style={{color: '#6b7280'}}>{label}</span>
                       <span style={{fontWeight: '600', color: label === 'Amount Paid' ? '#10b981' : label === 'Status' ? '#10b981' : '#1a1a1a'}}>{value}</span>

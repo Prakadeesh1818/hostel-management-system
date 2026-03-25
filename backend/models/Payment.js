@@ -7,7 +7,9 @@ const paymentSchema = new mongoose.Schema({
   paymentType: { type: String, enum: ['rent', 'deposit'], required: true },
   status: { type: String, enum: ['pending', 'completed'], default: 'pending' },
   month: { type: String },
-  year: { type: Number }
+  year: { type: Number },
+  razorpayQrId: { type: String },
+  razorpayPaymentId: { type: String }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Payment', paymentSchema);
