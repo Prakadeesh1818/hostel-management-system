@@ -5,6 +5,20 @@ const { auth } = require('../middleware/auth');
 
 const router = express.Router();
 
+const userFields = (user) => ({
+  id: user._id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  studentId: user.studentId,
+  phone: user.phone,
+  course: user.course,
+  year: user.year,
+  address: user.address,
+  guardianName: user.guardianName,
+  guardianPhone: user.guardianPhone
+});
+
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password, studentId, phone, course, year, address, guardianName, guardianPhone } = req.body;
@@ -16,7 +30,7 @@ router.post('/register', async (req, res) => {
     await user.save();
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    res.status(201).json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+    res.status(201).json({ token, user: userFields(user) });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -31,14 +45,14 @@ router.post('/login', async (req, res) => {
     }
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+    res.json({ token, user: userFields(user) });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
 router.get('/me', auth, async (req, res) => {
-  res.json({ user: { id: req.user._id, name: req.user.name, email: req.user.email, role: req.user.role } });
+  res.json({ user: userFields(req.user) });
 });
 
 module.exports = router;

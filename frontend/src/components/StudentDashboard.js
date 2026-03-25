@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { QRCodeSVG } from 'qrcode.react';
 
 const StudentDashboard = ({ user, onLogout }) => {
   const [rooms, setRooms] = useState([]);
@@ -12,6 +13,8 @@ const StudentDashboard = ({ user, onLogout }) => {
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('');
   const [selectedRoom, setSelectedRoom] = useState(null);
+  const [bill, setBill] = useState(null);
+  const [qrPaymentData, setQrPaymentData] = useState({ month: new Date().toLocaleString('default', { month: 'long' }), year: new Date().getFullYear(), paymentType: 'rent' });
 
   useEffect(() => {
     fetchData();
@@ -59,11 +62,12 @@ const StudentDashboard = ({ user, onLogout }) => {
   const handlePayment = async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
-    const amount = formData.get('amount');
     const bookingId = formData.get('bookingId');
     const paymentType = formData.get('paymentType');
     const month = formData.get('month');
     const year = formData.get('year');
+    const selectedBooking = bookings.find(b => b._id === bookingId);
+    const amount = selectedBooking?.monthlyRent || selectedBooking?.room?.monthlyRent;
 
     if (!window.Razorpay) {
       toast.error('Payment gateway not loaded. Please disable ad blockers and refresh.');
@@ -71,12 +75,25 @@ const StudentDashboard = ({ user, onLogout }) => {
     }
 
     const options = {
-      key: 'rzp_test_YOUR_KEY_ID',
+      key: 'rzp_test_x0xl9ekhCAEAg9',
       amount: amount * 100,
       currency: 'INR',
       name: 'HostelHub',
       description: `${paymentType} - ${month} ${year}`,
       image: 'https://cdn-icons-png.flaticon.com/512/3448/3448636.png',
+      method: { upi: true, card: true, netbanking: true, wallet: true },
+      config: {
+        display: {
+          blocks: {
+            upi: {
+              name: 'Pay via UPI / QR Code',
+              instruments: [{ method: 'upi', flows: ['qr', 'collect', 'intent'] }]
+            }
+          },
+          sequence: ['block.upi'],
+          preferences: { show_default_blocks: true }
+        }
+      },
       handler: async function (response) {
         try {
           await axios.post('/api/student/payment', {
@@ -87,7 +104,7 @@ const StudentDashboard = ({ user, onLogout }) => {
             year,
             razorpayPaymentId: response.razorpay_payment_id
           });
-          toast.success('Payment successful!');
+          toast.success('Payment successful! ID: ' + response.razorpay_payment_id);
           setShowModal(false);
           fetchData();
         } catch (error) {
@@ -99,9 +116,8 @@ const StudentDashboard = ({ user, onLogout }) => {
         email: profile.email,
         contact: profile.phone || ''
       },
-      theme: {
-        color: '#4f46e5'
-      }
+      notes: { booking_id: bookingId, payment_type: paymentType },
+      theme: { color: '#4f46e5' }
     };
 
     try {
@@ -132,7 +148,38 @@ const StudentDashboard = ({ user, onLogout }) => {
   const openModal = (type, room = null) => {
     setModalType(type);
     setSelectedRoom(room);
+    setBill(null);
     setShowModal(true);
+  };
+
+  const handleQrPaymentDone = async () => {
+    try {
+      const res = await axios.post('/api/student/payment', {
+        bookingId: selectedRoom._id,
+        amount: selectedRoom.monthlyRent,
+        paymentType: qrPaymentData.paymentType,
+        month: qrPaymentData.month,
+        year: qrPaymentData.year
+      });
+      const generatedBill = {
+        receiptNo: res.data._id.slice(-8).toUpperCase(),
+        studentName: profile.name,
+        studentId: profile.studentId || 'N/A',
+        roomNumber: selectedRoom.room?.roomNumber,
+        roomType: selectedRoom.room?.type,
+        amount: selectedRoom.monthlyRent,
+        paymentType: qrPaymentData.paymentType,
+        month: qrPaymentData.month,
+        year: qrPaymentData.year,
+        date: new Date().toLocaleDateString(),
+        upiId: 'prakadeesh137-1@okaxis'
+      };
+      setBill(generatedBill);
+      setModalType('bill');
+      fetchData();
+    } catch (error) {
+      toast.error('Error recording payment');
+    }
   };
 
   return (
@@ -424,6 +471,7 @@ const StudentDashboard = ({ user, onLogout }) => {
               <h3>
                 {modalType === 'bookRoom' && 'Book Room'}
                 {modalType === 'payment' && 'Make Payment'}
+                {modalType === 'bill' && '🧾 Payment Receipt'}
                 {modalType === 'complaint' && 'Raise Complaint'}
               </h3>
               <button onClick={() => setShowModal(false)}>×</button>
@@ -440,45 +488,85 @@ const StudentDashboard = ({ user, onLogout }) => {
             )}
 
             {modalType === 'payment' && (
-              <form onSubmit={handlePayment}>
+              <div>
                 {bookings.filter(b => b.status === 'approved').length === 0 ? (
-                  <p style={{color: '#e74c3c', textAlign: 'center', padding: '1rem'}}>No approved bookings available. Please book a room first and wait for admin approval.</p>
+                  <p style={{color: '#e74c3c', textAlign: 'center', padding: '1rem'}}>No approved bookings. Book a room first and wait for admin approval.</p>
+                ) : !selectedRoom ? (
+                  <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                    <p style={{margin: 0, color: '#6b7280', fontSize: '0.9rem'}}>Select a booking to generate QR code:</p>
+                    {bookings.filter(b => b.status === 'approved').map(booking => (
+                      <div key={booking._id}
+                        onClick={() => setSelectedRoom(booking)}
+                        style={{padding: '1rem', border: '2px solid #e1e5e9', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.2s'}}
+                        onMouseEnter={e => e.currentTarget.style.borderColor = '#4f46e5'}
+                        onMouseLeave={e => e.currentTarget.style.borderColor = '#e1e5e9'}
+                      >
+                        <p style={{margin: '0 0 0.25rem 0', fontWeight: '600'}}>Room {booking.room?.roomNumber} ({booking.room?.type})</p>
+                        <p style={{margin: 0, color: '#4f46e5', fontWeight: '700', fontSize: '1.2rem'}}>₹{booking.monthlyRent}/month</p>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
-                  <>
-                    <div className="form-group">
-                      <label>Booking</label>
-                      <select name="bookingId" required>
-                        <option value="">Select Booking</option>
-                        {bookings.filter(b => b.status === 'approved').map(booking => (
-                          <option key={booking._id} value={booking._id}>
-                            Room {booking.room?.roomNumber}
-                          </option>
-                        ))}
-                      </select>
+                  <div style={{textAlign: 'center'}}>
+                    <p style={{margin: '0 0 0.5rem 0', fontWeight: '600', fontSize: '1rem'}}>Room {selectedRoom.room?.roomNumber} - ₹{selectedRoom.monthlyRent}</p>
+                    <p style={{margin: '0 0 1rem 0', fontSize: '0.85rem', color: '#6b7280'}}>Scan QR to pay via any UPI app</p>
+                    <div style={{display: 'flex', gap: '1rem', marginBottom: '1rem'}}>
+                      <div style={{flex: 1}}>
+                        <label style={{fontSize: '0.8rem', color: '#6b7280'}}>Month</label>
+                        <select style={{width: '100%', padding: '0.4rem', borderRadius: '6px', border: '1px solid #ddd'}} value={qrPaymentData.month} onChange={e => setQrPaymentData(p => ({...p, month: e.target.value}))}>
+                          {['January','February','March','April','May','June','July','August','September','October','November','December'].map(m => <option key={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div style={{flex: 1}}>
+                        <label style={{fontSize: '0.8rem', color: '#6b7280'}}>Type</label>
+                        <select style={{width: '100%', padding: '0.4rem', borderRadius: '6px', border: '1px solid #ddd'}} value={qrPaymentData.paymentType} onChange={e => setQrPaymentData(p => ({...p, paymentType: e.target.value}))}>
+                          <option value="rent">Rent</option>
+                          <option value="deposit">Deposit</option>
+                        </select>
+                      </div>
                     </div>
-                    <div className="form-group">
-                      <label>Amount</label>
-                      <input type="number" name="amount" required />
+                    <div style={{display: 'inline-block', padding: '1rem', background: 'white', borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', marginBottom: '1rem'}}>
+                      <QRCodeSVG
+                        value={`upi://pay?pa=prakadeesh137-1@okaxis&pn=HostelHub&am=${selectedRoom.monthlyRent}&cu=INR&tn=Room${selectedRoom.room?.roomNumber}-${qrPaymentData.paymentType}`}
+                        size={200}
+                        bgColor='#ffffff'
+                        fgColor='#4f46e5'
+                        level='H'
+                        includeMargin={true}
+                      />
                     </div>
-                    <div className="form-group">
-                      <label>Payment Type</label>
-                      <select name="paymentType" required>
-                        <option value="rent">Rent</option>
-                        <option value="deposit">Deposit</option>
-                      </select>
+                    <div style={{padding: '0.75rem', background: '#eff6ff', borderRadius: '8px', marginBottom: '1rem'}}>
+                      <p style={{margin: '0 0 0.25rem 0', fontSize: '0.85rem', color: '#6b7280'}}>UPI ID</p>
+                      <p style={{margin: 0, fontWeight: '700', color: '#4f46e5', fontSize: '1rem'}}>prakadeesh137-1@okaxis</p>
+                      <p style={{margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#6b7280'}}>Amount</p>
+                      <p style={{margin: 0, fontWeight: '700', color: '#10b981', fontSize: '1.25rem'}}>₹{selectedRoom.monthlyRent}</p>
                     </div>
-                    <div className="form-group">
-                      <label>Month</label>
-                      <input type="text" name="month" placeholder="January" required />
-                    </div>
-                    <div className="form-group">
-                      <label>Year</label>
-                      <input type="number" name="year" defaultValue={new Date().getFullYear()} required />
-                    </div>
-                    <button type="submit" className="btn btn-primary">Submit Payment</button>
-                  </>
+                    <button className="btn btn-primary" style={{width: '100%', marginBottom: '0.5rem', background: '#10b981', border: 'none'}} onClick={handleQrPaymentDone}>🧾 Payment Done – Generate Bill</button>
+                    <button className="btn btn-secondary" style={{width: '100%'}} onClick={() => setSelectedRoom(null)}>← Back</button>
+                  </div>
                 )}
-              </form>
+              </div>
+            )}
+
+            {modalType === 'bill' && bill && (
+              <div style={{fontFamily: 'monospace'}}>
+                <div style={{textAlign: 'center', borderBottom: '2px dashed #ddd', paddingBottom: '1rem', marginBottom: '1rem'}}>
+                  <p style={{margin: 0, fontSize: '1.3rem', fontWeight: '700', color: '#4f46e5'}}>🏠 HostelHub</p>
+                  <p style={{margin: '0.25rem 0 0', fontSize: '0.85rem', color: '#6b7280'}}>Payment Receipt</p>
+                </div>
+                <div style={{display: 'grid', gap: '0.5rem', fontSize: '0.9rem', marginBottom: '1rem'}}>
+                  {[['Receipt No', `#${bill.receiptNo}`], ['Date', bill.date], ['Student', bill.studentName], ['Student ID', bill.studentId], ['Room', `${bill.roomNumber} (${bill.roomType})`], ['Payment For', `${bill.paymentType.toUpperCase()} - ${bill.month} ${bill.year}`], ['Amount Paid', `₹${bill.amount}`], ['Paid Via', `UPI (${bill.upiId})`], ['Status', '✅ PAID']].map(([label, value]) => (
+                    <div key={label} style={{display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px dotted #eee'}}>
+                      <span style={{color: '#6b7280'}}>{label}</span>
+                      <span style={{fontWeight: '600', color: label === 'Amount Paid' ? '#10b981' : label === 'Status' ? '#10b981' : '#1a1a1a'}}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{textAlign: 'center', borderTop: '2px dashed #ddd', paddingTop: '1rem'}}>
+                  <p style={{margin: 0, fontSize: '0.8rem', color: '#6b7280'}}>Thank you for your payment!</p>
+                </div>
+                <button className="btn btn-primary" style={{width: '100%', marginTop: '1rem'}} onClick={() => { setShowModal(false); setSelectedRoom(null); setBill(null); }}>Close</button>
+              </div>
             )}
 
             {modalType === 'complaint' && (

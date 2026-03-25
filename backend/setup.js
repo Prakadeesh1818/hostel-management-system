@@ -49,9 +49,8 @@ const setupDatabase = async () => {
       const floor = Math.ceil(i / 10);
       const roomNumber = `${floor}${String(i % 10 || 10).padStart(2, '0')}`;
       const type = roomTypes[Math.floor(Math.random() * roomTypes.length)];
-      const capacity = type === 'single' ? 1 : type === 'double' ? 2 : 3;
-      const baseRent = type === 'single' ? 8000 : type === 'double' ? 6000 : 5000;
-      const monthlyRent = baseRent + (floor * 500) + Math.floor(Math.random() * 1000);
+      const capacity = type === 'single' ? 1 : type === 'double' ? 2 : 4;
+      const monthlyRent = type === 'single' ? 10000 : type === 'double' ? 8000 : 6000;
       const roomFacilities = facilities[Math.floor(Math.random() * facilities.length)];
 
       rooms.push({
