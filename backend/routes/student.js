@@ -84,7 +84,7 @@ router.post('/payment', auth, async (req, res) => {
     const { paymentId } = req.body;
     const payment = await Payment.findOneAndUpdate(
       { _id: paymentId, student: req.user._id, status: 'pending' },
-      { status: 'completed' },
+      { status: 'verifying' },
       { new: true }
     );
     if (!payment) return res.status(404).json({ message: 'Payment not found' });

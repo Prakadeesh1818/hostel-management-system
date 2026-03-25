@@ -106,6 +106,28 @@ router.patch('/bookings/:id', adminAuth, async (req, res) => {
   }
 });
 
+router.get('/payments', adminAuth, async (req, res) => {
+  try {
+    const payments = await Payment.find({ status: 'verifying' })
+      .populate('student', 'name email studentId')
+      .populate({ path: 'booking', populate: { path: 'room', select: 'roomNumber type' } });
+    res.json(payments);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.patch('/payments/:id', adminAuth, async (req, res) => {
+  try {
+    const { action } = req.body;
+    const status = action === 'accept' ? 'completed' : 'pending';
+    const payment = await Payment.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    res.json(payment);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.get('/complaints', adminAuth, async (req, res) => {
   try {
     const complaints = await Complaint.find().populate('student', 'name email');

@@ -221,9 +221,9 @@ const StudentDashboard = ({ user, onLogout }) => {
                     <td>{payment.month} {payment.year}</td>
                     <td>
                       <span style={{padding: '0.2rem 0.6rem', borderRadius: '12px', fontSize: '0.8rem', fontWeight: '600',
-                        background: payment.status === 'completed' ? '#d1fae5' : '#fef3c7',
-                        color: payment.status === 'completed' ? '#065f46' : '#92400e'}}>
-                        {payment.status}
+                        background: payment.status === 'completed' ? '#d1fae5' : payment.status === 'verifying' ? '#ede9fe' : '#fef3c7',
+                        color: payment.status === 'completed' ? '#065f46' : payment.status === 'verifying' ? '#5b21b6' : '#92400e'}}>
+                        {payment.status === 'verifying' ? '⏳ Verifying' : payment.status}
                       </span>
                     </td>
                     <td>{new Date(payment.createdAt).toLocaleDateString()}</td>

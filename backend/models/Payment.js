@@ -5,7 +5,7 @@ const paymentSchema = new mongoose.Schema({
   booking: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking', required: true },
   amount: { type: Number, required: true },
   paymentType: { type: String, enum: ['rent', 'deposit'], required: true },
-  status: { type: String, enum: ['pending', 'completed'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'verifying', 'completed', 'rejected'], default: 'pending' },
   month: { type: String },
   year: { type: Number },
   razorpayQrId: { type: String },

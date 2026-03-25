@@ -8,6 +8,7 @@ const AdminDashboard = ({ user, onLogout }) => {
   const [rooms, setRooms] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [complaints, setComplaints] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showModal, setShowModal] = useState(false);
   const [roomForm, setRoomForm] = useState({ roomNumber: '', floor: '', type: 'single', capacity: 1, monthlyRent: '', facilities: '' });
@@ -20,18 +21,20 @@ const AdminDashboard = ({ user, onLogout }) => {
 
   const fetchData = async () => {
     try {
-      const [statsRes, studentsRes, roomsRes, bookingsRes, complaintsRes] = await Promise.all([
+      const [statsRes, studentsRes, roomsRes, bookingsRes, complaintsRes, paymentsRes] = await Promise.all([
         axios.get('/api/admin/dashboard'),
         axios.get('/api/admin/students'),
         axios.get('/api/admin/rooms'),
         axios.get('/api/admin/bookings'),
-        axios.get('/api/admin/complaints')
+        axios.get('/api/admin/complaints'),
+        axios.get('/api/admin/payments')
       ]);
       setStats(statsRes.data);
       setStudents(studentsRes.data);
       setRooms(roomsRes.data);
       setBookings(bookingsRes.data);
       setComplaints(complaintsRes.data);
+      setPayments(paymentsRes.data);
     } catch (error) {
       toast.error('Error fetching data');
     }
@@ -73,6 +76,16 @@ const AdminDashboard = ({ user, onLogout }) => {
     }
   };
 
+  const handlePaymentAction = async (paymentId, action) => {
+    try {
+      await axios.patch(`/api/admin/payments/${paymentId}`, { action });
+      toast.success(`Payment ${action === 'accept' ? 'accepted' : 'rejected'}`);
+      fetchData();
+    } catch (error) {
+      toast.error('Error updating payment');
+    }
+  };
+
   const viewRoomDetails = async (roomId) => {
     try {
       const res = await axios.get(`/api/admin/rooms/${roomId}/details`);
@@ -94,7 +107,7 @@ const AdminDashboard = ({ user, onLogout }) => {
       </div>
 
       <div style={{padding: '0 2.5rem', marginBottom: '2rem'}}>
-        {['dashboard', 'students', 'rooms', 'bookings', 'complaints'].map(tab => (
+        {['dashboard', 'students', 'rooms', 'bookings', 'payments', 'complaints'].map(tab => (
           <button 
             key={tab}
             className={`btn ${activeTab === tab ? 'btn-primary' : 'btn-secondary'}`}
@@ -239,6 +252,47 @@ const AdminDashboard = ({ user, onLogout }) => {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {activeTab === 'payments' && (
+        <div className="section">
+          <h2>Payment Verifications ({payments.length})</h2>
+          {payments.length === 0 ? (
+            <p style={{padding: '1rem', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', color: '#065f46'}}>No pending payment verifications.</p>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Student ID</th>
+                  <th>Room</th>
+                  <th>Amount</th>
+                  <th>Type</th>
+                  <th>Month/Year</th>
+                  <th>Date</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map(payment => (
+                  <tr key={payment._id}>
+                    <td>{payment.student?.name}</td>
+                    <td>{payment.student?.studentId}</td>
+                    <td>{payment.booking?.room?.roomNumber}</td>
+                    <td style={{fontWeight: '600', color: '#10b981'}}>₹{payment.amount}</td>
+                    <td>{payment.paymentType}</td>
+                    <td>{payment.month} {payment.year}</td>
+                    <td>{new Date(payment.createdAt).toLocaleDateString()}</td>
+                    <td>
+                      <button className="btn btn-success" style={{marginRight: '0.5rem'}} onClick={() => handlePaymentAction(payment._id, 'accept')}>Accept</button>
+                      <button className="btn btn-danger" onClick={() => handlePaymentAction(payment._id, 'reject')}>Reject</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 
